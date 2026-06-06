@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>🏆 Escáner · Campeonato Regional del Sur</title>
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,400;0,600;0,700;0,800;0,900;1,800&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
 <style>
 /* ══ TOKENS ════════════════════════════════════════════════ */
 :root {
@@ -357,6 +358,56 @@ header {
   pointer-events:none;
 }
 
+/* ── QR SCANNER ───────────────────────────────────────────── */
+.btn-scan-qr{
+  display:none; /* solo móvil */
+  width:100%;
+  background:linear-gradient(135deg,#003366,#0055aa);
+  color:#fff;border:none;border-radius:3px;padding:14px;
+  font-family:var(--font-h);font-size:15px;font-weight:900;
+  cursor:pointer;letter-spacing:2px;text-transform:uppercase;
+  transition:all .2s;margin-bottom:12px;
+  align-items:center;justify-content:center;gap:10px;
+  clip-path:polygon(0 0,calc(100% - 10px) 0,100% 10px,100% 100%,10px 100%,0 calc(100% - 10px));
+}
+.btn-scan-qr:hover{transform:translateY(-1px);box-shadow:0 8px 24px rgba(0,85,170,.4)}
+.btn-scan-qr.active{
+  background:linear-gradient(135deg,#330000,#880000);
+  clip-path:none;border-radius:3px;
+}
+.qr-camera-box{
+  display:none;
+  background:var(--s1);border:1px solid var(--border2);
+  border-left:3px solid #0066cc;
+  border-radius:var(--r);overflow:hidden;
+  margin-bottom:16px;
+}
+.qr-camera-box.open{display:block}
+.qr-camera-header{
+  padding:10px 14px;
+  font-family:var(--font-h);font-size:11px;font-weight:700;
+  color:#60a5fa;letter-spacing:2px;text-transform:uppercase;
+  border-bottom:1px solid var(--border);
+  display:flex;align-items:center;gap:8px;
+}
+.qr-camera-header .pulse{
+  width:8px;height:8px;border-radius:50%;background:#00E676;
+  animation:pulse-dot 1.2s infinite;flex-shrink:0;
+}
+@keyframes pulse-dot{
+  0%,100%{opacity:1;transform:scale(1)}
+  50%{opacity:.4;transform:scale(.7)}
+}
+#qr-reader{width:100%}
+#qr-reader video{width:100%!important;max-height:260px;object-fit:cover}
+#qr-reader img{display:none!important} /* ocultar botón de carga de imagen */
+.qr-scan-status{
+  padding:8px 14px;font-family:var(--font-h);font-size:11px;
+  color:var(--muted);letter-spacing:1px;text-transform:uppercase;
+  border-top:1px solid var(--border);
+  min-height:32px;
+}
+
 /* ── RESPONSIVE ───────────────────────────────────────────── */
 @media(max-width:480px){
   .pc-name{font-size:22px}
@@ -364,6 +415,7 @@ header {
   .pc-info-cell:last-child{grid-column:span 2}
   header{padding:0 12px}
   .scanner-badge{display:none}
+  .btn-scan-qr{display:flex} /* visible solo en móvil */
 }
 </style>
 </head>
@@ -412,6 +464,21 @@ header {
     <!-- Banner cuando viene con ?qrid= en la URL -->
     <div class="autoload-banner" id="autoload-banner" style="display:none">
       <span>🔗</span> <span id="autoload-text">QR detectado en enlace</span>
+    </div>
+
+    <!-- Botón escanear (solo móvil) -->
+    <button class="btn-scan-qr" id="btn-scan-qr" onclick="toggleScanner()">
+      📷 Escanear QR
+    </button>
+
+    <!-- Cámara QR -->
+    <div class="qr-camera-box" id="qr-camera-box">
+      <div class="qr-camera-header">
+        <span class="pulse"></span>
+        Escáner activo · Apunta al código QR
+      </div>
+      <div id="qr-reader"></div>
+      <div class="qr-scan-status" id="qr-scan-status">Buscando código QR...</div>
     </div>
 
     <!-- Input manual -->
@@ -763,26 +830,38 @@ async function doCheckin(tipo) {
 
   const qrid = currentPersona[C.QR_ID] || document.getElementById('qr-input').value.trim();
 
+  const payload = JSON.stringify({ action: 'checkin', token: session.token, qrid: qrid, tipo: tipo });
+
   try {
+    // Apps Script doPost requiere que NO se envíe Content-Type: application/json
+    // para evitar el preflight CORS. Se envía como text/plain con body JSON.
     const r = await fetch(SCRIPT_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       redirect: 'follow',
-      body: JSON.stringify({ action: 'checkin', token: session.token, qrid, tipo })
+      body: payload
+      // sin headers: el navegador usará text/plain, no dispara preflight
     });
-    const d = await r.json();
+
+    // Apps Script puede devolver text/html en el redirect — leer texto primero
+    const text = await r.text();
+    let d;
+    try {
+      // Extraer JSON del texto (a veces viene envuelto en HTML de redirección)
+      const match = text.match(/\{[\s\S]*\}/);
+      d = match ? JSON.parse(match[0]) : JSON.parse(text);
+    } catch(_) {
+      throw new Error('Respuesta no JSON: ' + text.substring(0, 120));
+    }
 
     if (d.result === 'ok') {
-      // Actualizar estado local
       if (!currentCheckins) currentCheckins = {};
       currentCheckins[tipo] = new Date().toLocaleTimeString('es-PE');
-
       showFeedback('ok', tipo, d.nombre || currentPersona[C.Nombre], null);
-      // Re-render la tarjeta con el estado actualizado
       setTimeout(() => {
         const qridVal = document.getElementById('qr-input').value.trim();
         renderPersonCard(currentPersona, null, currentCheckins, qridVal);
         isProcessing = false;
+        // No detener el escáner — listo para siguiente persona
       }, 2200);
 
     } else if (d.result === 'duplicado') {
@@ -791,7 +870,6 @@ async function doCheckin(tipo) {
       isProcessing = false;
 
     } else {
-      // Sesión expirada
       if (d.mensaje && d.mensaje.includes('expirad')) {
         localStorage.removeItem('ev_session');
         session = null;
@@ -804,10 +882,104 @@ async function doCheckin(tipo) {
       isProcessing = false;
     }
   } catch(ex) {
-    showFeedback('err', tipo, null, 'Error de conexión. Intenta de nuevo.');
+    showFeedback('err', tipo, null, 'Error de conexión: ' + ex.message);
     if (btn) { btn.disabled = false; btn.textContent = tipo === 'ingreso' ? '🎫 Registrar Ingreso' : '🍽️ Registrar Entrega'; }
     isProcessing = false;
   }
+}
+
+// ── QR SCANNER ────────────────────────────────────────────────
+let qrScanner = null;
+let scannerActive = false;
+let lastScannedCode = '';
+let lastScanTime = 0;
+
+async function toggleScanner() {
+  const btn = document.getElementById('btn-scan-qr');
+  const box = document.getElementById('qr-camera-box');
+
+  if (scannerActive) {
+    await stopScanner();
+    btn.textContent = '📷 Escanear QR';
+    btn.classList.remove('active');
+    box.classList.remove('open');
+  } else {
+    await startScanner();
+    btn.innerHTML = '⏹ Detener Escáner';
+    btn.classList.add('active');
+    box.classList.add('open');
+  }
+}
+
+async function startScanner() {
+  const statusEl = document.getElementById('qr-scan-status');
+
+  if (!qrScanner) {
+    qrScanner = new Html5Qrcode('qr-reader');
+  }
+
+  const config = {
+    fps: 10,
+    qrbox: { width: 240, height: 240 },
+    aspectRatio: 1.0,
+    disableFlip: false
+  };
+
+  try {
+    await qrScanner.start(
+      { facingMode: 'environment' },
+      config,
+      onQRScanned,
+      (errorMsg) => { /* errores silenciosos de frame */ }
+    );
+    scannerActive = true;
+    statusEl.textContent = 'Buscando código QR...';
+  } catch(err) {
+    // Fallback a cámara frontal si falla la trasera
+    try {
+      await qrScanner.start(
+        { facingMode: 'user' },
+        config,
+        onQRScanned,
+        () => {}
+      );
+      scannerActive = true;
+      statusEl.textContent = 'Usando cámara frontal...';
+    } catch(err2) {
+      showToast('⚠ No se pudo acceder a la cámara');
+      document.getElementById('qr-camera-box').classList.remove('open');
+      document.getElementById('btn-scan-qr').classList.remove('active');
+      document.getElementById('btn-scan-qr').textContent = '📷 Escanear QR';
+    }
+  }
+}
+
+async function stopScanner() {
+  if (qrScanner && scannerActive) {
+    try { await qrScanner.stop(); } catch(_) {}
+    scannerActive = false;
+  }
+}
+
+function onQRScanned(decodedText) {
+  const now = Date.now();
+  // Evitar re-escaneo del mismo código en menos de 3 segundos
+  if (decodedText === lastScannedCode && now - lastScanTime < 3000) return;
+
+  lastScannedCode = decodedText;
+  lastScanTime = now;
+
+  const statusEl = document.getElementById('qr-scan-status');
+  statusEl.textContent = '✅ QR detectado: ' + decodedText;
+
+  // Rellenar input y buscar automáticamente
+  document.getElementById('qr-input').value = decodedText;
+  buscarQR();
+
+  // Restablecer mensaje tras 2.5s para estar listo para el siguiente
+  setTimeout(() => {
+    if (scannerActive) statusEl.textContent = 'Listo para siguiente código...';
+  }, 2500);
 }
 
 // ── FEEDBACK OVERLAY ──────────────────────────────────────────
