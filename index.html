@@ -719,6 +719,13 @@ async function buscarQR() {
     currentCheckins = checkins;
 
     renderPersonCard(persona, titular, checkins, qrid);
+
+    // Si ya hay ingreso registrado, mostrar alerta brevemente
+    const rol = session.rol;
+    if (checkins.ingreso && (rol === 'verificadorasistencia' || rol === 'administrador')) {
+      showFeedback('dup', 'ingreso', persona[C.Nombre], 'Registrado a las ' + formatHora(checkins.ingreso));
+      setTimeout(closeFeedback, 3000);
+    }
   } catch(ex) {
     area.innerHTML = `
       <div class="empty-state">
@@ -813,7 +820,7 @@ function renderPersonCard(persona, titular, checkins, qrid) {
       </div>
       <div class="pc-actions">
         ${botonesHtml}
-        <button class="btn-action" style="background:linear-gradient(135deg,#003366,#0055aa);color:#fff;margin-top:4px" onclick="limpiarYEscanear()">📷 Escanear Siguiente</button>
+
       </div>
     </div>`;
 }
@@ -999,9 +1006,9 @@ function limpiarYEscanear() {
       <span class="big">📷</span>
       Escanea un QR o ingresa<br>el ID manualmente
     </div>`;
-  // Activar escáner si está en pantalla móvil (botón visible)
+  // Reactivar escáner automáticamente en móvil
   const btnScan = document.getElementById('btn-scan-qr');
-  if (btnScan && getComputedStyle(btnScan).display !== 'none') {
+  if (btnScan && getComputedStyle(btnScan).display !== 'none' && !scannerActive) {
     toggleScanner();
   }
 }
@@ -1009,7 +1016,16 @@ function limpiarYEscanear() {
 // ── HELPERS ───────────────────────────────────────────────────
 function formatHora(str) {
   if (!str) return '';
-  const parts = String(str).split(' ');
+  const s = String(str).trim();
+  // ISO format: 2026-06-06T20:48:24.000Z
+  if (s.includes('T') && (s.endsWith('Z') || s.includes('+'))) {
+    try {
+      const d = new Date(s);
+      return d.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit', hour12: false });
+    } catch(_) {}
+  }
+  // "dd/MM/yyyy HH:mm:ss" → solo hora
+  const parts = s.split(' ');
   return parts[1] || parts[0] || '';
 }
 
