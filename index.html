@@ -813,6 +813,7 @@ function renderPersonCard(persona, titular, checkins, qrid) {
       </div>
       <div class="pc-actions">
         ${botonesHtml}
+        <button class="btn-action" style="background:linear-gradient(135deg,#003366,#0055aa);color:#fff;margin-top:4px" onclick="limpiarYEscanear()">📷 Escanear Siguiente</button>
       </div>
     </div>`;
 }
@@ -936,7 +937,7 @@ async function stopScanner() {
   }
 }
 
-function onQRScanned(decodedText) {
+async function onQRScanned(decodedText) {
   const now = Date.now();
   // Extraer el QR_ID real del texto escaneado (puede ser URL completa)
   const qrid = extractQRID(decodedText);
@@ -950,12 +951,15 @@ function onQRScanned(decodedText) {
   const statusEl = document.getElementById('qr-scan-status');
   statusEl.textContent = '✅ Detectado: ' + qrid;
 
+  // Detener el escáner inmediatamente para que el operador pueda actuar
+  await stopScanner();
+  const btn = document.getElementById('btn-scan-qr');
+  const box = document.getElementById('qr-camera-box');
+  if (btn) { btn.textContent = '📷 Escanear QR'; btn.classList.remove('active'); }
+  if (box) box.classList.remove('open');
+
   document.getElementById('qr-input').value = qrid;
   buscarQR();
-
-  setTimeout(() => {
-    if (scannerActive) statusEl.textContent = 'Listo para siguiente código...';
-  }, 2500);
 }
 
 // ── FEEDBACK OVERLAY ──────────────────────────────────────────
@@ -981,6 +985,25 @@ function showFeedback(type, tipo, nombre, extra) {
 
 function closeFeedback() {
   document.getElementById('feedback').classList.remove('show');
+}
+
+// ── LIMPIAR Y VOLVER A ESCANEAR ───────────────────────────────
+function limpiarYEscanear() {
+  currentPersona = null;
+  currentCheckins = null;
+  lastScannedCode = '';
+  lastScanTime = 0;
+  document.getElementById('qr-input').value = '';
+  document.getElementById('result-area').innerHTML = `
+    <div class="empty-state">
+      <span class="big">📷</span>
+      Escanea un QR o ingresa<br>el ID manualmente
+    </div>`;
+  // Activar escáner si está en pantalla móvil (botón visible)
+  const btnScan = document.getElementById('btn-scan-qr');
+  if (btnScan && getComputedStyle(btnScan).display !== 'none') {
+    toggleScanner();
+  }
 }
 
 // ── HELPERS ───────────────────────────────────────────────────
