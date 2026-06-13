@@ -239,6 +239,7 @@ header {
 }
 .pc-tipo-t{background:rgba(255,215,0,.15);color:var(--gold);border:1px solid rgba(255,215,0,.25)}
 .pc-tipo-a{background:rgba(0,230,118,.12);color:var(--mint);border:1px solid rgba(0,230,118,.22)}
+.pc-tipo-p{background:rgba(155,89,182,.15);color:#c39bd3;border:1px solid rgba(155,89,182,.3)}
 .pc-name{
   font-family:var(--font-h);font-size:28px;font-weight:900;
   text-transform:uppercase;letter-spacing:.5px;line-height:1;margin-bottom:4px;
@@ -781,6 +782,7 @@ function renderPersonCard(persona, titular, checkins, qrid) {
   const tipoPersona = persona[C.TipoPersona]   || '—';
 
   const esAcomp = tipoPersona === 'Acompañante';
+  const esPadrino = (persona[C.Tipo] || '').toLowerCase() === 'padrino';
   const rol     = session.rol;
 
   // Permisos por rol
@@ -832,8 +834,8 @@ function renderPersonCard(persona, titular, checkins, qrid) {
   document.getElementById('result-area').innerHTML = `
     <div class="person-card">
       <div class="pc-header">
-        <div class="pc-tipo-badge ${esAcomp ? 'pc-tipo-a' : 'pc-tipo-t'}">
-          ${esAcomp ? '👥 Acompañante' : '👤 Titular'}
+        <div class="pc-tipo-badge ${esAcomp ? 'pc-tipo-a' : (esPadrino ? 'pc-tipo-p' : 'pc-tipo-t')}">
+          ${esAcomp ? '👥 Acompañante' : (esPadrino ? '👑 Padrino' : '👤 Titular')}
         </div>
         <div class="pc-name">${e(nombre)}</div>
         <div class="pc-dep">${e(dependencia)}</div>
