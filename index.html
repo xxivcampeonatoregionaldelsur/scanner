@@ -295,6 +295,7 @@ header {
 }
 .status-dot.done{background:var(--mint);box-shadow:0 0 8px rgba(0,230,118,.5)}
 .status-dot.pending{background:var(--border2)}
+.status-dot.blocked{background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2)}
 .status-text{font-family:var(--font-h);font-size:12px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;line-height:1.2}
 .status-text small{display:block;font-size:10px;font-weight:600;color:var(--muted);margin-top:2px;letter-spacing:.3px}
 
@@ -312,7 +313,18 @@ header {
 .btn-action:hover:not(:disabled){transform:translateY(-2px);box-shadow:0 10px 30px rgba(0,0,0,.4)}
 .btn-action:disabled{opacity:.35;cursor:not-allowed;transform:none;clip-path:none;border-radius:3px}
 .btn-ingreso{background:linear-gradient(135deg,#007a33,#00c853);color:#fff}
-.btn-entrega{background:linear-gradient(135deg,var(--gold2),var(--gold));color:#000}
+.btn-entrega  {background:linear-gradient(135deg,var(--gold2),var(--gold));color:#000}
+.btn-souvenir {background:linear-gradient(135deg,#5c2d91,#9b59b6);color:#fff}
+.btn-aperitivo{background:linear-gradient(135deg,#c0392b,#e74c3c);color:#fff}
+.btn-action.blocked{
+  opacity:.38;cursor:not-allowed;transform:none;clip-path:none;border-radius:3px;
+  border:1px dashed rgba(255,255,255,.2)!important;position:relative;
+}
+.btn-action.blocked::after{
+  content:'🚫 Solo Titular';
+  position:absolute;right:12px;
+  font-size:10px;opacity:.7;letter-spacing:.5px;text-transform:uppercase;
+}
 .btn-action.done{
   background:rgba(0,230,118,.08)!important;
   color:var(--mint)!important;
@@ -539,7 +551,7 @@ header {
 
 <script>
 // ── CONFIG ───────────────────────────────────────────────────
-const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxPhKyqdu5jPw9KdJAkk8TDsUJdb_S_xP-8BK-5knpXb_P8Z4_vAImVCrCn3PUfT0Pq4g/exec';
+const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyFDxh4WpufofWVZR96CcMgv_NQsOhMOZNLJtzZQS21pc92Z2pvNUH5_K_v7toeYdAqBA/exec';
 
 const C = {
   FechaHora:0, Tipo:1, Nombre:2, Dependencia:3, Celular:4,
@@ -574,9 +586,11 @@ function normalizeRow(row) {
   return row.map(cellStr);
 }
 function normalizeCheckins(raw) {
-  if (!raw || typeof raw !== 'object') return { ingreso: null, entrega: null };
+  if (!raw || typeof raw !== 'object')
+    return { ingreso: null, entrega: null, souvenir: null, aperitivo: null };
   const out = {};
   for (const k of Object.keys(raw)) out[k] = raw[k] ? cellStr(raw[k]) : null;
+  ['ingreso','entrega','souvenir','aperitivo'].forEach(k => { if (!(k in out)) out[k] = null; });
   return out;
 }
 
@@ -749,34 +763,55 @@ async function buscarQR() {
   document.getElementById('btn-buscar').disabled = false;
 }
 
+// ── METADATOS DE TIPOS (extensible) ─────────────────────────────
+const TIPO_META = {
+  ingreso:   { icon: '🎫', label: 'Ingreso',   btnText: '🎫 Registrar Ingreso'   },
+  entrega:   { icon: '🍽️', label: 'Entrega',   btnText: '🍽️ Registrar Entrega'  },
+  souvenir:  { icon: '🎁', label: 'Souvenir',  btnText: '🎁 Registrar Souvenir'  },
+  aperitivo: { icon: '🍢', label: 'Aperitivo', btnText: '🍢 Registrar Aperitivo' }
+};
+
 // ── RENDER TARJETA ─────────────────────────────────────────────
 function renderPersonCard(persona, titular, checkins, qrid) {
-  const nombre      = persona[C.Nombre]           || '—';
-  const dependencia = persona[C.Dependencia]      || '—';
-  const comida      = persona[C.Comida]           || '—';
-  const bebida      = persona[C.Bebida]           || '—';
-  const disciplina  = persona[C.Disciplina]       || '—';
-  const tipoPersona = persona[C.TipoPersona]      || '—';
+  const nombre      = persona[C.Nombre]       || '—';
+  const dependencia = persona[C.Dependencia]   || '—';
+  const comida      = persona[C.Comida]        || '—';
+  const bebida      = persona[C.Bebida]        || '—';
+  const disciplina  = persona[C.Disciplina]    || '—';
+  const tipoPersona = persona[C.TipoPersona]   || '—';
 
-  const esAcomp    = tipoPersona === 'Acompañante';
-  const hasIngreso = !!(checkins.ingreso);
-  const hasEntrega = !!(checkins.entrega);
+  const esAcomp = tipoPersona === 'Acompañante';
+  const rol     = session.rol;
 
-  const rol = session.rol;
-  const puedeIngreso = (rol === 'verificadorasistencia' || rol === 'administrador');
-  const puedeEntrega = (rol === 'verificadorentrega'    || rol === 'administrador');
+  // Permisos por rol
+  const puedeIngreso   = (rol === 'verificadorasistencia' || rol === 'administrador');
+  const puedeEntrega   = (rol === 'verificadorentrega'    || rol === 'administrador');
+  const puedeSouvenir  = puedeEntrega;
+  const puedeAperitivo = puedeEntrega;
+
+  // Estado de checkins
+  const hasIngreso   = !!(checkins.ingreso);
+  const hasEntrega   = !!(checkins.entrega);
+  const hasSouvenir  = !!(checkins.souvenir);
+  const hasAperitivo = !!(checkins.aperitivo);
+
+  // Helper botón
+  function btnAccion(tipo, hasCheckin, cssClass, icon, label) {
+    const bloqueado = esAcomp && (tipo === 'souvenir' || tipo === 'aperitivo');
+    if (hasCheckin) {
+      return `<button class="btn-action done" disabled>✅ ${label} — ${formatHora(checkins[tipo])}</button>`;
+    }
+    if (bloqueado) {
+      return `<button class="btn-action ${cssClass} blocked" disabled title="Solo disponible para Titulares">${icon} ${label}</button>`;
+    }
+    return `<button class="btn-action ${cssClass}" id="btn-${tipo}" onclick="doCheckin('${tipo}')">${icon} Registrar ${label}</button>`;
+  }
 
   let botonesHtml = '';
-  if (puedeIngreso) {
-    botonesHtml += hasIngreso
-      ? `<button class="btn-action done" disabled>✅ Ingreso registrado — ${formatHora(checkins.ingreso)}</button>`
-      : `<button class="btn-action btn-ingreso" id="btn-ingreso" onclick="doCheckin('ingreso')">🎫 Registrar Ingreso</button>`;
-  }
-  if (puedeEntrega) {
-    botonesHtml += hasEntrega
-      ? `<button class="btn-action done" disabled>✅ Entrega registrada — ${formatHora(checkins.entrega)}</button>`
-      : `<button class="btn-action btn-entrega" id="btn-entrega" onclick="doCheckin('entrega')">🍽️ Registrar Entrega</button>`;
-  }
+  if (puedeIngreso)   botonesHtml += btnAccion('ingreso',   hasIngreso,   'btn-ingreso',   '🎫', 'Ingreso');
+  if (puedeEntrega)   botonesHtml += btnAccion('entrega',   hasEntrega,   'btn-entrega',   '🍽️', 'Entrega');
+  if (puedeSouvenir)  botonesHtml += btnAccion('souvenir',  hasSouvenir,  'btn-souvenir',  '🎁', 'Souvenir');
+  if (puedeAperitivo) botonesHtml += btnAccion('aperitivo', hasAperitivo, 'btn-aperitivo', '🍢', 'Aperitivo');
   if (!puedeIngreso && !puedeEntrega) {
     botonesHtml = `<div style="text-align:center;color:var(--muted);font-family:var(--font-h);font-size:12px;letter-spacing:1px;text-transform:uppercase;padding:12px 0">Solo lectura — sin permisos de registro</div>`;
   }
@@ -790,6 +825,10 @@ function renderPersonCard(persona, titular, checkins, qrid) {
       </div>`;
   }
 
+  const avisoAcomp = esAcomp
+    ? `<div style="background:rgba(155,89,182,.12);border:1px solid rgba(155,89,182,.3);border-radius:3px;padding:8px 12px;margin:10px 16px 0;font-size:11px;color:#9b59b6;font-family:var(--font-h);letter-spacing:.5px;text-align:center">🚫 ACOMPAÑANTE · Sin acceso a souvenir ni aperitivo</div>`
+    : '';
+
   document.getElementById('result-area').innerHTML = `
     <div class="person-card">
       <div class="pc-header">
@@ -801,6 +840,7 @@ function renderPersonCard(persona, titular, checkins, qrid) {
         <div class="pc-qrid">ID: ${e(qrid)}</div>
       </div>
       ${titularHtml}
+      ${avisoAcomp}
       <div class="pc-info">
         <div class="pc-info-cell">
           <div class="pc-info-lbl">🍽️ Comida</div>
@@ -817,23 +857,24 @@ function renderPersonCard(persona, titular, checkins, qrid) {
       </div>
       <div class="pc-status">
         <div class="pc-status-cell">
-          <div class="status-dot ${hasIngreso ? 'done' : 'pending'}"></div>
-          <div class="status-text">
-            Ingreso
-            <small>${hasIngreso ? formatHora(checkins.ingreso) : 'Pendiente'}</small>
-          </div>
+          <div class="status-dot ${hasIngreso   ? 'done' : 'pending'}"></div>
+          <div class="status-text">Ingreso<small>${hasIngreso   ? formatHora(checkins.ingreso)   : 'Pendiente'}</small></div>
         </div>
         <div class="pc-status-cell">
-          <div class="status-dot ${hasEntrega ? 'done' : 'pending'}"></div>
-          <div class="status-text">
-            Entrega
-            <small>${hasEntrega ? formatHora(checkins.entrega) : 'Pendiente'}</small>
-          </div>
+          <div class="status-dot ${hasEntrega   ? 'done' : 'pending'}"></div>
+          <div class="status-text">Entrega<small>${hasEntrega   ? formatHora(checkins.entrega)   : 'Pendiente'}</small></div>
+        </div>
+        <div class="pc-status-cell">
+          <div class="status-dot ${hasSouvenir  ? 'done' : (esAcomp ? 'blocked' : 'pending')}"></div>
+          <div class="status-text">Souvenir<small>${hasSouvenir  ? formatHora(checkins.souvenir)  : (esAcomp ? 'N/A' : 'Pendiente')}</small></div>
+        </div>
+        <div class="pc-status-cell">
+          <div class="status-dot ${hasAperitivo ? 'done' : (esAcomp ? 'blocked' : 'pending')}"></div>
+          <div class="status-text">Aperitivo<small>${hasAperitivo ? formatHora(checkins.aperitivo) : (esAcomp ? 'N/A' : 'Pendiente')}</small></div>
         </div>
       </div>
       <div class="pc-actions">
         ${botonesHtml}
-
       </div>
     </div>`;
 }
@@ -844,27 +885,21 @@ async function doCheckin(tipo) {
   if (!currentPersona) { showToast('⚠ No hay persona cargada'); return; }
   isProcessing = true;
 
-  const btn = document.getElementById('btn-' + tipo);
+  const meta = TIPO_META[tipo] || { icon: '✅', label: tipo, btnText: tipo };
+  const btn  = document.getElementById('btn-' + tipo);
   if (btn) { btn.disabled = true; btn.textContent = 'Registrando...'; }
 
-  const qrid = currentPersona[C.QR_ID] || document.getElementById('qr-input').value.trim();
+  const qrid    = currentPersona[C.QR_ID] || document.getElementById('qr-input').value.trim();
   const payload = JSON.stringify({ action: 'checkin', token: session.token, qrid: qrid, tipo: tipo });
 
   try {
-    const r = await fetch(SCRIPT_URL, {
-      method: 'POST',
-      redirect: 'follow',
-      body: payload
-    });
-
+    const r = await fetch(SCRIPT_URL, { method: 'POST', redirect: 'follow', body: payload });
     const text = await r.text();
     let d;
     try {
       const match = text.match(/\{[\s\S]*\}/);
       d = match ? JSON.parse(match[0]) : JSON.parse(text);
-    } catch(_) {
-      throw new Error('Respuesta no JSON: ' + text.substring(0, 120));
-    }
+    } catch(_) { throw new Error('Respuesta no JSON: ' + text.substring(0, 120)); }
 
     if (d.result === 'ok') {
       if (!currentCheckins) currentCheckins = {};
@@ -877,9 +912,9 @@ async function doCheckin(tipo) {
       }, 2200);
 
     } else if (d.result === 'duplicado') {
-      // Ya registrado previamente — feedback especial
-      showFeedback('dup', tipo, currentPersona[C.Nombre], d.fecha ? 'Registrado el: ' + d.fecha : 'Ya fue verificado anteriormente');
-      if (btn) { btn.disabled = false; btn.textContent = tipo === 'ingreso' ? '🎫 Registrar Ingreso' : '🍽️ Registrar Entrega'; }
+      showFeedback('dup', tipo, currentPersona[C.Nombre],
+        d.fecha ? 'Registrado el: ' + d.fecha : 'Ya fue verificado anteriormente');
+      if (btn) { btn.disabled = false; btn.textContent = meta.btnText; }
       setTimeout(closeFeedback, 3500);
       isProcessing = false;
 
@@ -891,14 +926,14 @@ async function doCheckin(tipo) {
         setTimeout(() => { closeFeedback(); logout(); }, 2500);
       } else {
         showFeedback('err', tipo, null, d.mensaje || 'Error desconocido');
-        if (btn) { btn.disabled = false; btn.textContent = tipo === 'ingreso' ? '🎫 Registrar Ingreso' : '🍽️ Registrar Entrega'; }
+        if (btn) { btn.disabled = false; btn.textContent = meta.btnText; }
         setTimeout(closeFeedback, 3000);
       }
       isProcessing = false;
     }
   } catch(ex) {
     showFeedback('err', tipo, null, 'Error de conexión. Intenta de nuevo.');
-    if (btn) { btn.disabled = false; btn.textContent = tipo === 'ingreso' ? '🎫 Registrar Ingreso' : '🍽️ Registrar Entrega'; }
+    if (btn) { btn.disabled = false; btn.textContent = meta.btnText; }
     setTimeout(closeFeedback, 3000);
     isProcessing = false;
   }
@@ -987,17 +1022,22 @@ function showFeedback(type, tipo, nombre, extra) {
   const fb = document.getElementById('feedback');
   fb.className = 'feedback show fb-' + type;
 
+  const iconMap  = { ingreso:'🎫', entrega:'🍽️', souvenir:'🎁', aperitivo:'🍢' };
+  const labelMap = { ingreso:'INGRESO', entrega:'ENTREGA', souvenir:'SOUVENIR', aperitivo:'APERITIVO' };
+  const icon  = iconMap[tipo]  || '✅';
+  const label = labelMap[tipo] || (tipo ? tipo.toUpperCase() : '');
+
   const config = {
-    ok:   { icon: tipo === 'ingreso' ? '🎫' : '🍽️', title: tipo === 'ingreso' ? '¡INGRESO OK!' : '¡ENTREGA OK!', sub: 'Registro exitoso' },
-    dup:  { icon: '⚠️',  title: 'YA REGISTRADO',   sub: tipo === 'ingreso' ? 'El ingreso ya fue verificado' : 'La entrega ya fue registrada' },
+    ok:   { icon: icon,  title: `¡${label} OK!`,   sub: 'Registro exitoso' },
+    dup:  { icon: '⚠️',  title: 'YA REGISTRADO',   sub: `El ${label.toLowerCase()} ya fue verificado` },
     err:  { icon: '❌',  title: 'ERROR',            sub: 'No se pudo completar' },
     warn: { icon: '🚫',  title: 'QR NO ENCONTRADO', sub: 'Este código no existe en el sistema' }
   };
   const c = config[type] || config.err;
-  document.getElementById('fb-icon').textContent = c.icon;
-  document.getElementById('fb-title').textContent = c.title;
-  document.getElementById('fb-name').textContent = nombre ? nombre.toUpperCase() : '';
-  document.getElementById('fb-sub').textContent = c.sub;
+  document.getElementById('fb-icon').textContent   = c.icon;
+  document.getElementById('fb-title').textContent  = c.title;
+  document.getElementById('fb-name').textContent   = nombre ? nombre.toUpperCase() : '';
+  document.getElementById('fb-sub').textContent    = c.sub;
   document.getElementById('fb-detail').textContent = extra || '';
 
   if (type === 'ok') setTimeout(closeFeedback, 2200);
