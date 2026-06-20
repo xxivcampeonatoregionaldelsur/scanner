@@ -1,6 +1,6 @@
 {
   "name": "Escáner · XXIV Campeonato Regional del Sur",
-  "short_name": "Escáner MDD 2026",
+  "short_name": "Escáner",
   "description": "Escáner de credenciales para el XXIV Campeonato Regional del Sur - Eliana Amparo R. Molina del Carpio - MDD 2026",
   "start_url": "./index.html",
   "scope": "./",
