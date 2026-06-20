@@ -1,5 +1,5 @@
 // Service Worker — Escáner XXIV Campeonato Regional del Sur (MDD 2026)
-const CACHE_NAME = 'escaner-mdd2026-v1';
+const CACHE_NAME = 'Escáner';
 const APP_SHELL = [
   './index.html',
   './manifest.json',
