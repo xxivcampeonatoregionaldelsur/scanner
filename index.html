@@ -824,9 +824,9 @@ function renderPersonCard(persona, titular, checkins, qrid) {
 
   let botonesHtml = '';
   if (puedeIngreso)   botonesHtml += btnAccion('ingreso',   hasIngreso,   'btn-ingreso',   '🎫', 'Ingreso');
-  if (puedeEntrega)   botonesHtml += btnAccion('entrega',   hasEntrega,   'btn-entrega',   '🍽️', 'Entrega');
-  if (puedeSouvenir)  botonesHtml += btnAccion('souvenir',  hasSouvenir,  'btn-souvenir',  '🎁', 'Souvenir');
-  if (puedeAperitivo) botonesHtml += btnAccion('aperitivo', hasAperitivo, 'btn-aperitivo', '🍢', 'Aperitivo');
+  if (puedeEntrega)   botonesHtml += btnAccion('entrega',   hasEntrega,   'btn-entrega',   '🍽️', 'Entrega de almuerzo');
+  if (puedeSouvenir)  botonesHtml += btnAccion('souvenir',  hasSouvenir,  'btn-souvenir',  '🎁', 'Entrega de souvenir');
+  if (puedeAperitivo) botonesHtml += btnAccion('aperitivo', hasAperitivo, 'btn-aperitivo', '🍢', 'Entrega de aperitivo');
   if (!puedeIngreso && !puedeEntrega && !puedeSouvenir && !puedeAperitivo) {
     botonesHtml = `<div style="text-align:center;color:var(--muted);font-family:var(--font-h);font-size:12px;letter-spacing:1px;text-transform:uppercase;padding:12px 0">Solo lectura — sin permisos de registro</div>`;
   }
