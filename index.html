@@ -93,6 +93,7 @@ header {
 .role-ventrega   {background:rgba(232,0,45,.15);color:#ff6b6b}
 .role-delegado   {background:rgba(0,102,204,.2);color:#60a5fa}
 .role-edecan     {background:rgba(155,89,182,.15);color:#9b59b6}
+.role-vaperitivo {background:rgba(232,57,45,.15);color:#ff6b6b}
 .btn-logout{
   background:transparent;border:1px solid var(--border);
   border-radius:3px;padding:6px 11px;
@@ -318,6 +319,7 @@ header {
 .btn-entrega  {background:linear-gradient(135deg,var(--gold2),var(--gold));color:#000}
 .btn-souvenir {background:linear-gradient(135deg,#5c2d91,#9b59b6);color:#fff}
 .btn-aperitivo{background:linear-gradient(135deg,#c0392b,#e74c3c);color:#fff}
+.btn-fiesta{background:linear-gradient(135deg,#004c99,var(--blue));color:#fff}
 .btn-action.blocked{
   opacity:.38;cursor:not-allowed;transform:none;clip-path:none;border-radius:3px;
   border:1px dashed rgba(255,255,255,.2)!important;position:relative;
@@ -676,10 +678,10 @@ function normalizeRow(row) {
 }
 function normalizeCheckins(raw) {
   if (!raw || typeof raw !== 'object')
-    return { ingreso: null, entrega: null, souvenir: null, aperitivo: null };
+    return { ingreso: null, entrega: null, souvenir: null, aperitivo: null, fiesta: null };
   const out = {};
   for (const k of Object.keys(raw)) out[k] = raw[k] ? cellStr(raw[k]) : null;
-  ['ingreso','entrega','souvenir','aperitivo'].forEach(k => { if (!(k in out)) out[k] = null; });
+  ['ingreso','entrega','souvenir','aperitivo','fiesta'].forEach(k => { if (!(k in out)) out[k] = null; });
   return out;
 }
 
@@ -731,7 +733,7 @@ async function doLogin() {
     const r = await fetch(`${SCRIPT_URL}?action=login&usuario=${encodeURIComponent(user)}&password=${encodeURIComponent(pass)}`, { redirect: 'follow' });
     const d = await r.json();
     if (d.result === 'ok') {
-      const rolesPermitidos = ['verificadorasistencia', 'verificadorentrega', 'edecan', 'administrador'];
+      const rolesPermitidos = ['verificadorasistencia', 'verificadorentrega', 'verificadoraperitivo', 'edecan', 'administrador'];
       if (!rolesPermitidos.includes(d.rol)) {
         err.textContent = 'Tu rol no tiene acceso al escáner';
         btn.textContent = '⚡ Ingresar'; btn.disabled = false;
@@ -764,6 +766,7 @@ function startApp() {
     administrador:        ['Admin',          'role-admin'],
     verificadorasistencia:['Ver. Asistencia','role-vasistencia'],
     verificadorentrega:   ['Ver. Entrega',   'role-ventrega'],
+    verificadoraperitivo: ['Ver. Aperitivo', 'role-vaperitivo'],
     delegado:             ['Delegado',       'role-delegado'],
     edecan:               ['Edecán',         'role-edecan']
   };
@@ -882,7 +885,8 @@ const TIPO_META = {
   ingreso:   { icon: '🎫', label: 'Ingreso',   btnText: '🎫 Registrar Ingreso'   },
   entrega:   { icon: '🍽️', label: 'Entrega',   btnText: '🍽️ Registrar Entrega de almuerzo'  },
   souvenir:  { icon: '🎁', label: 'Souvenir',  btnText: '🎁 Registrar Entrega de recuerdo'  },
-  aperitivo: { icon: '🍢', label: 'Aperitivo', btnText: '🍢 Registrar Entrega de aperitivo' }
+  aperitivo: { icon: '🍢', label: 'Aperitivo', btnText: '🍢 Registrar Entrega de aperitivo' },
+  fiesta:    { icon: '🎉', label: 'Fiesta',    btnText: '🎉 Registrar Ingreso a fiesta' }
 };
 
 // ── RENDER TARJETA ─────────────────────────────────────────────
@@ -902,13 +906,15 @@ function renderPersonCard(persona, titular, checkins, qrid) {
   const puedeIngreso   = (rol === 'verificadorasistencia' || rol === 'administrador');
   const puedeEntrega   = (rol === 'verificadorentrega'    || rol === 'administrador');
   const puedeSouvenir  = puedeEntrega || rol === 'edecan';
-  const puedeAperitivo = puedeEntrega;
+  const puedeAperitivo = (rol === 'verificadoraperitivo'  || rol === 'administrador');
+  const puedeFiesta    = puedeIngreso; // mismo rol que ingreso: verificadorasistencia
 
   // Estado de checkins
   const hasIngreso   = !!(checkins.ingreso);
   const hasEntrega   = !!(checkins.entrega);
   const hasSouvenir  = !!(checkins.souvenir);
   const hasAperitivo = !!(checkins.aperitivo);
+  const hasFiesta    = !!(checkins.fiesta);
 
   // Helper botón
   function btnAccion(tipo, hasCheckin, cssClass, icon, label) {
@@ -924,10 +930,11 @@ function renderPersonCard(persona, titular, checkins, qrid) {
 
   let botonesHtml = '';
   if (puedeIngreso)   botonesHtml += btnAccion('ingreso',   hasIngreso,   'btn-ingreso',   '🎫', 'Ingreso');
+  if (puedeFiesta)    botonesHtml += btnAccion('fiesta',    hasFiesta,    'btn-fiesta',    '🎉', 'Ingreso a fiesta');
   if (puedeEntrega)   botonesHtml += btnAccion('entrega',   hasEntrega,   'btn-entrega',   '🍽️', 'Entrega de almuerzo');
   if (puedeSouvenir)  botonesHtml += btnAccion('souvenir',  hasSouvenir,  'btn-souvenir',  '🎁', 'Entrega de souvenir');
   if (puedeAperitivo) botonesHtml += btnAccion('aperitivo', hasAperitivo, 'btn-aperitivo', '🍢', 'Entrega de aperitivo');
-  if (!puedeIngreso && !puedeEntrega && !puedeSouvenir && !puedeAperitivo) {
+  if (!puedeIngreso && !puedeFiesta && !puedeEntrega && !puedeSouvenir && !puedeAperitivo) {
     botonesHtml = `<div style="text-align:center;color:var(--muted);font-family:var(--font-h);font-size:12px;letter-spacing:1px;text-transform:uppercase;padding:12px 0">Solo lectura — sin permisos de registro</div>`;
   }
 
@@ -974,6 +981,10 @@ function renderPersonCard(persona, titular, checkins, qrid) {
         <div class="pc-status-cell">
           <div class="status-dot ${hasIngreso   ? 'done' : 'pending'}"></div>
           <div class="status-text">Ingreso<small>${hasIngreso   ? formatHora(checkins.ingreso)   : 'Pendiente'}</small></div>
+        </div>
+        <div class="pc-status-cell">
+          <div class="status-dot ${hasFiesta    ? 'done' : 'pending'}"></div>
+          <div class="status-text">Fiesta<small>${hasFiesta    ? formatHora(checkins.fiesta)    : 'Pendiente'}</small></div>
         </div>
         <div class="pc-status-cell">
           <div class="status-dot ${hasEntrega   ? 'done' : 'pending'}"></div>
@@ -1143,8 +1154,8 @@ function showFeedback(type, tipo, nombre, extra) {
   const fb = document.getElementById('feedback');
   fb.className = 'feedback show fb-' + type;
 
-  const iconMap  = { ingreso:'🎫', entrega:'🍽️', souvenir:'🎁', aperitivo:'🍢' };
-  const labelMap = { ingreso:'INGRESO', entrega:'ENTREGA', souvenir:'SOUVENIR', aperitivo:'APERITIVO' };
+  const iconMap  = { ingreso:'🎫', entrega:'🍽️', souvenir:'🎁', aperitivo:'🍢', fiesta:'🎉' };
+  const labelMap = { ingreso:'INGRESO', entrega:'ENTREGA', souvenir:'SOUVENIR', aperitivo:'APERITIVO', fiesta:'FIESTA' };
   const icon  = iconMap[tipo]  || '✅';
   const label = labelMap[tipo] || (tipo ? tipo.toUpperCase() : '');
 
